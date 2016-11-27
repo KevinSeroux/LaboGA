@@ -6,7 +6,7 @@ Release
 *.user
 apphelp.pdb
 .vs
-*.DB
+*.VC.DB
 *.opendb
 
 # App
