@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <random>
+#include <algorithm>
 #include <bitset>
 #include "Entete.h"
 #pragma comment (lib,"GeneticDLL.lib")
@@ -62,12 +63,12 @@ void Remplacement(std::vector<TIndividu> & Parents, std::vector<TIndividu> Enfan
 void MonIgnition(char *Param[]);
 TIndividu MonAlgoGenetique(vector<TIndividu>& Pop, vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen);
 void MaPopulationInitiale(vector<TIndividu>& Pop, TIndividu& Best, const TProblem& unProb, TGenetic& unGen);
-void MaSelectionCroisement(vector<TIndividu>& Pop, vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen, vector<bool>& forcerMutation);
+void MaSelectionCroisement(vector<TIndividu>& Pop, vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen, vector<int>& forcerMutation);
 void MonCroisementUniforme(const TIndividu& Parent1, const TIndividu& Parent2, TIndividu& Enfant, const TProblem& unProb);
 void MonCroisementPoint(const TIndividu& Parent1, const TIndividu& Parent2, TIndividu& Enfant, const TProblem& unProb);
 void MonCroisement2Points(const TIndividu& Parent1, const TIndividu& Parent2, TIndividu& Enfant, const TProblem& unProb);
 void MaReparation(vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen);
-void MaMutation(vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen, const vector<bool>& forcerMutation);
+void MaMutation(vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen, const vector<int>& forcerMutation);
 
 //*****************************************************************************************
 // Options pour la compilation :
@@ -138,7 +139,8 @@ inline TIndividu MonAlgoGenetique(vector<TIndividu>& Pop, vector<TIndividu>& Pop
 	const TProblem& unProb, TGenetic& unGen)
 {
 	TIndividu Best;	//**Meilleure solution depuis le début de l'algorithme
-	vector<bool> forcerMutation(unGen.TaillePopEnfant, false);
+	vector<int> forcerMutation = vector<int>(); //**Contient les id des enfants à muter
+	forcerMutation.reserve(unGen.TaillePopEnfant); //**Pour éviter l'allocation à chaque insertion
 
 	MaPopulationInitiale(Pop, Best, unProb, unGen);
 	AfficherProbleme(unProb);
@@ -147,6 +149,7 @@ inline TIndividu MonAlgoGenetique(vector<TIndividu>& Pop, vector<TIndividu>& Pop
 	do
 	{
 		unGen.Gen++;
+		forcerMutation.clear();
 
 		//**SELECTION et CROISEMENT
 		MaSelectionCroisement(Pop, PopEnfant, unProb, unGen, forcerMutation);
@@ -197,7 +200,7 @@ inline void MaPopulationInitiale(vector<TIndividu>& Pop, TIndividu& Best,
 
 inline void MaSelectionCroisement(vector<TIndividu>& Pop,
 	vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen,
-	vector<bool>& forcerMutation)
+	vector<int>& forcerMutation)
 {
 	for (int i = 0; i < unGen.TaillePopEnfant; i++)
 	{
@@ -217,9 +220,9 @@ inline void MaSelectionCroisement(vector<TIndividu>& Pop,
 		//**CROISEMENT entre les deux parents. Création d'UN enfant.
 		PopEnfant[i] = Croisement(Pop[Pere], Pop[Mere], unProb, unGen);
 
-		//Si l'enfant ressemble trop au père, on force la mutation
+		//Si l'enfant ressemble trop à l'un des parents, on force la mutation
 		if (PopEnfant[i].Selec == Pop[Pere].Selec)
-			forcerMutation[i] = true;
+			forcerMutation.push_back(i);
 
 
 #ifdef VERBOSE
@@ -257,19 +260,25 @@ TIndividu Croisement(TIndividu Parent1, TIndividu Parent2, TProblem unProb, TGen
 }
 
 inline void MaMutation(vector<TIndividu>& PopEnfant, const TProblem& unProb,
-	TGenetic& unGen, const vector<bool>& forcerMutation)
+	TGenetic& unGen, const vector<int>& forcerMutation)
 {
-	for (int i = 0; i < PopEnfant.size(); i++)
-		if (forcerMutation[i] == true)
-			Mutation(PopEnfant[i], unProb, unGen);
+	int i = 0;
+	int nbMutationsObligatoires = forcerMutation.size();
+	int nbMutationsTotal = ceil(unGen.ProbMut * unGen.TaillePopEnfant);
 
-	for (int i = 0; i< ceil(unGen.ProbMut * unGen.TaillePopEnfant); i++)
+	for (; i < nbMutationsObligatoires; ++i)
+		Mutation(PopEnfant[forcerMutation[i]], unProb, unGen);
+
+	//**Si le nombre de mutations obligatoires dépassent le nombre de mutations
+	//**aléatoires, alors on ne fait pas de mutation aléatoire
+	for (; i < nbMutationsTotal; ++i)
 	{
 		//**Choix Aléatoire d'un enfant a muter
 		int Sol = rand() % unGen.TaillePopEnfant;
 
 		//**Pas besoin de muter si la mutation a été forcée
-		if (forcerMutation[Sol] == false)
+		const vector<int>::const_iterator& endIt = forcerMutation.cend();
+		if (find(forcerMutation.cbegin(), endIt, Sol) != endIt)
 		{
 			//AfficherSolutions(PopEnfant, Sol, Sol, LeGenetic.Gen, LeProb);
 			Mutation(PopEnfant[Sol], unProb, unGen);
@@ -293,10 +302,24 @@ inline void MaReparation(vector<TIndividu>& PopEnfant, const TProblem& unProb,
 #endif
 			do
 			{
-				int indexGeneAPermuter = rand() % unProb.NbObj;
+				/*int indexGeneAPermuter = rand() % unProb.NbObj;
+				while (PopEnfant[i].Selec[indexGeneAPermuter] == false)
+				{
+					indexGeneAPermuter = rand() % unProb.NbObj;
+				}
+				PopEnfant[i].Selec[indexGeneAPermuter] = false;*/
+
+				int indexGeneAPermuter;
+
+				do { indexGeneAPermuter = rand() % unProb.NbObj; }
+				while (PopEnfant[i].Selec[indexGeneAPermuter] == false);
+
+				PopEnfant[i].Selec[indexGeneAPermuter] = false;
+
+				/*
 				if (PopEnfant[i].Selec[indexGeneAPermuter] == true)
 					PopEnfant[i].Selec[indexGeneAPermuter] = false;
-
+					*/
 			} while (!EstValide(PopEnfant[i], unProb));
 
 			EvaluerSolution(PopEnfant[i], unProb, unGen);
