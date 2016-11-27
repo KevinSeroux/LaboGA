@@ -62,12 +62,12 @@ void Remplacement(std::vector<TIndividu> & Parents, std::vector<TIndividu> Enfan
 void MonIgnition(char *Param[]);
 TIndividu MonAlgoGenetique(vector<TIndividu>& Pop, vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen);
 void MaPopulationInitiale(vector<TIndividu>& Pop, TIndividu& Best, const TProblem& unProb, TGenetic& unGen);
-void MaSelectionCroisement(vector<TIndividu>& Pop, vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen);
+void MaSelectionCroisement(vector<TIndividu>& Pop, vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen, vector<bool>& forcerMutation);
 void MonCroisementUniforme(const TIndividu& Parent1, const TIndividu& Parent2, TIndividu& Enfant, const TProblem& unProb);
 void MonCroisementPoint(const TIndividu& Parent1, const TIndividu& Parent2, TIndividu& Enfant, const TProblem& unProb);
 void MonCroisement2Points(const TIndividu& Parent1, const TIndividu& Parent2, TIndividu& Enfant, const TProblem& unProb);
 void MaReparation(vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen);
-void MaMutation(vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen);
+void MaMutation(vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen, const vector<bool>& forcerMutation);
 
 //*****************************************************************************************
 // Options pour la compilation :
@@ -138,6 +138,7 @@ inline TIndividu MonAlgoGenetique(vector<TIndividu>& Pop, vector<TIndividu>& Pop
 	const TProblem& unProb, TGenetic& unGen)
 {
 	TIndividu Best;	//**Meilleure solution depuis le début de l'algorithme
+	vector<bool> forcerMutation(unGen.TaillePopEnfant, false);
 
 	MaPopulationInitiale(Pop, Best, unProb, unGen);
 	AfficherProbleme(unProb);
@@ -148,11 +149,11 @@ inline TIndividu MonAlgoGenetique(vector<TIndividu>& Pop, vector<TIndividu>& Pop
 		unGen.Gen++;
 
 		//**SELECTION et CROISEMENT
-		MaSelectionCroisement(Pop, PopEnfant, unProb, unGen);
+		MaSelectionCroisement(Pop, PopEnfant, unProb, unGen, forcerMutation);
 		//AfficherSolutions(PopEnfant, 0, LeGenetic.TaillePopEnfant, LeGenetic.Gen, LeProb);
 
 		//**MUTATION d'une solution
-		MaMutation(PopEnfant, unProb, unGen);
+		MaMutation(PopEnfant, unProb, unGen, forcerMutation);
 		//AfficherSolutions(PopEnfant, Sol, Sol, LeGenetic.Gen, LeProb);
 
 		//**REPARATION operator
@@ -195,7 +196,8 @@ inline void MaPopulationInitiale(vector<TIndividu>& Pop, TIndividu& Best,
 }
 
 inline void MaSelectionCroisement(vector<TIndividu>& Pop,
-	vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen)
+	vector<TIndividu>& PopEnfant, const TProblem& unProb, TGenetic& unGen,
+	vector<bool>& forcerMutation)
 {
 	for (int i = 0; i < unGen.TaillePopEnfant; i++)
 	{
@@ -214,6 +216,11 @@ inline void MaSelectionCroisement(vector<TIndividu>& Pop,
 
 		//**CROISEMENT entre les deux parents. Création d'UN enfant.
 		PopEnfant[i] = Croisement(Pop[Pere], Pop[Mere], unProb, unGen);
+
+		//Si l'enfant ressemble trop au père, on force la mutation
+		if (PopEnfant[i].Selec == Pop[Pere].Selec)
+			forcerMutation[i] = true;
+
 
 #ifdef VERBOSE
 		cout << endl << "Pere " << Pere << " et Mere " << Mere << " donnent :" << endl;
@@ -250,14 +257,23 @@ TIndividu Croisement(TIndividu Parent1, TIndividu Parent2, TProblem unProb, TGen
 }
 
 inline void MaMutation(vector<TIndividu>& PopEnfant, const TProblem& unProb,
-	TGenetic& unGen)
+	TGenetic& unGen, const vector<bool>& forcerMutation)
 {
+	for (int i = 0; i < PopEnfant.size(); i++)
+		if (forcerMutation[i] == true)
+			Mutation(PopEnfant[i], unProb, unGen);
+
 	for (int i = 0; i< ceil(unGen.ProbMut * unGen.TaillePopEnfant); i++)
 	{
 		//**Choix Aléatoire d'un enfant a muter
 		int Sol = rand() % unGen.TaillePopEnfant;
-		//AfficherSolutions(PopEnfant, Sol, Sol, LeGenetic.Gen, LeProb);
-		Mutation(PopEnfant[Sol], unProb, unGen);
+
+		//**Pas besoin de muter si la mutation a été forcée
+		if (forcerMutation[Sol] == false)
+		{
+			//AfficherSolutions(PopEnfant, Sol, Sol, LeGenetic.Gen, LeProb);
+			Mutation(PopEnfant[Sol], unProb, unGen);
+		}
 	}
 }
 
